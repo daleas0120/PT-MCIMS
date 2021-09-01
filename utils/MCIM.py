@@ -37,17 +37,28 @@ class spinLattice:
 
     def initLineCoupledLattice(self):
 
+        """
+
+        :param M:
+        :param N:
+        :return:
+        """
         M = self.rows
         N = self.cols
 
         # Create randomized lattice
-        L = np.random.rand(M, N)
+        self.latticeA = np.random.rand(M, N)
+        self.latticeB = np.random.rand(M, N)
 
         # Assign points to high spin (HS) or low spin (LS) state
-        L[L < 0.5] = -1
-        L[L >= 0.5] = 1
+        self.latticeA[self.latticeA < 0.5] = -1
+        self.latticeA[self.latticeA >= 0.5] = 1
+        self.latticeB[self.latticeB < 0.5] = -1
+        self.latticeB[self.latticeB >= 0.5] = 1
 
-        return L
+        self.lattice = np.concatenate((self.latticeA, self.latticeB), axis=1)
+
+        return self.lattice
 
     def initPlaneCoupledLattice(self):
         """
@@ -56,25 +67,21 @@ class spinLattice:
         :return:
         """
         M = self.rows
+        N = self.cols
 
         # Create randomized lattice
-        A = np.random.rand(M, M)
-        B = np.random.rand(M, M)
+        self.latticeA = np.random.rand(M, N)
+        self.latticeB = np.random.rand(M, N)
 
-        # Assign points to the high spin (HS) or low spin (LS) state
-        A[A < 0.5] = -1
-        A[A >= 0.5] = 1
-        B[B < 0.5] = -1
-        B[B >= 0.5] = 1
+        # Assign points to high spin (HS) or low spin (LS) state
+        self.latticeA[self.latticeA < 0.5] = -1
+        self.latticeA[self.latticeA >= 0.5] = 1
+        self.latticeB[self.latticeB < 0.5] = -1
+        self.latticeB[self.latticeB >= 0.5] = 1
 
-        # Pad the top and bottom with non interacting spins
-        top = np.zeros((M, M))
-        bottom = np.zeros((M, M))
+        self.lattice = np.concatenate((self.latticeA, self.latticeB), axis=1)
 
-        # stack them together
-        L = np.dstack((top, A, B, bottom))
-
-        return L
+        return self.lattice
 
     def initPointCoupledLattice(self):
         """
@@ -104,12 +111,8 @@ class spinLattice:
         M = self.rows
         N = self.cols
         J = self.J
-        type = self.couplingType
 
-        if type == 'oop':
-            J_matrix = J*np.ones((M, M, 4))
-        else:
-            J_matrix = J * np.ones((M, N))
+        J_matrix = J * np.ones((M, N))
 
         return J_matrix
 
@@ -121,10 +124,9 @@ class spinLattice:
         type = self.couplingType
 
         if type == 'oop':
-            self.mu_matrixA = mu * np.ones((M, M, 4))
+            self.mu_matrixA = mu * np.ones((M, N))
+            self.mu_matrixB = -1*mu*np.ones((M, N))
 
-            # Right Half
-            self.mu_matrixB[:, :, 2] = -1 * self.mu_matrixA[:, :, 2]
         else:
             self.mu_matrixA = mu * np.ones((M, N))
             self.mu_matrixB = -1*mu*np.ones((M, N))
@@ -135,6 +137,111 @@ class metropolisAlgorithm():
         self.burn_in = BURN_IN
         self.steps = STEPS
         self.temp = TEMP
+
+    def MC_step_plane(self, spins, J, beta, step):
+        """
+        Completes a single Monte Carlo step for the entire matrix L given parameters
+
+        :param L: spin matrix
+        :param J: coupling matrix
+        :param mu: mean field matrix
+        :param beta: temperature parameter
+        :return: annealed lattice
+        """
+        A = spins.latticeA
+        B = spins.latticeB
+        M = spins.rows
+        N = spins.cols
+
+        def loop_over_spins(L, L2, M, N, J_matrix, mu_matrix):
+            """
+            Function that performs the MC step
+            :param L: The primary lattice under consideration
+            :param L2: The secondary lattice coupled to the primary lattice
+            :param M: Number of rows
+            :param N: Number of columns
+            :param J_matrix: The matrix of coupling values J at each point
+            :param mu_matrix: The matrix of mean field values mu at each point
+            :return: the annealed primary lattice
+            """
+            for row in range(0, M):
+                for col in range(0, N):
+
+                    i = random.randint(0, M-1)
+                    j = random.randint(0, N-1)
+
+                    sumNN = J_matrix[((i - 1) + M) % M, j] * L[((i - 1) + M) % M, j] + \
+                            J_matrix[(i + 1) % M, j] * L[(i + 1) % M, j] + \
+                            J_matrix[i, ((j - 1) + N) % N] * L[i, ((j - 1) + N) % N] + \
+                            J_matrix[i, ((j + 1) % N)] * L[i, ((j + 1) % N)] + \
+                            spins.k*L2[(i, j)]
+
+                    E_a = -0.5 * L[i, j] * sumNN + mu_matrix[i, j] * L[i, j]
+
+                    E_b = -1 * E_a
+
+                    if E_b < E_a:
+                        L[i, j] = -1 * L[i, j]
+                    elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
+                        L[i, j] = -1 * L[i, j]
+
+        if step % 2 == 0:
+            loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
+            loop_over_spins(A, B, M, N, J, spins.mu_matrixA)
+        else:
+            loop_over_spins(A, B, M, N, J, spins.mu_matrixA)
+            loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
+
+    def MC_step_line(self, spins, J, beta, step):
+        """
+        Completes a single Monte Carlo step for the entire matrix L given parameters
+
+        :param L: spin matrix
+        :param J: coupling matrix
+        :param mu: mean field matrix
+        :param beta: temperature parameter
+        :return: annealed lattice
+        """
+        A = spins.latticeA
+        B = spins.latticeB
+        M = spins.rows
+        N = spins.cols
+
+        def loop_over_spins(L, L2, M, N, J_matrix, mu_matrix):
+
+            for row in range(0, M):
+                for col in range(0, N):
+
+                    i = random.randint(0, M-1)
+                    j = random.randint(0, N-1)
+
+                    if i==math.floor(M/2):
+                        sumNN = J_matrix[((i - 1) + M) % M, j] * L[((i - 1) + M) % M, j] + \
+                                J_matrix[(i + 1) % M, j] * L[(i + 1) % M, j] + \
+                                J_matrix[i, ((j - 1) + N) % N] * L[i, ((j - 1) + N) % N] + \
+                                J_matrix[i, ((j + 1) % N)] * L[i, ((j + 1) % N)] + \
+                                spins.k*L2[(i, j)]
+                    else:
+                        sumNN = J_matrix[((i - 1) + M) % M, j] * L[((i - 1) + M) % M, j] + \
+                                J_matrix[(i + 1) % M, j] * L[(i + 1) % M, j] + \
+                                J_matrix[i, ((j - 1) + N) % N] * L[i, ((j - 1) + N) % N] + \
+                                J_matrix[i, ((j + 1) % N)] * L[i, ((j + 1) % N)]
+
+                    E_a = -0.5 * L[i, j] * sumNN + mu_matrix[i, j] * L[i, j]
+
+                    E_b = -1 * E_a
+
+                    if E_b < E_a:
+                        L[i, j] = -1 * L[i, j]
+                    elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
+                        L[i, j] = -1 * L[i, j]
+
+        if step % 2 == 0:
+            loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
+            loop_over_spins(A, B, M, N, J, spins.mu_matrixA)
+        else:
+            loop_over_spins(A, B, M, N, J, spins.mu_matrixA)
+            loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
 
     def MC_step(self, spins, J, beta, step):
         """
@@ -171,14 +278,27 @@ class metropolisAlgorithm():
                                 J_matrix[i, ((j - 1) + N) % N] * L[i, ((j - 1) + N) % N] + \
                                 J_matrix[i, ((j + 1) % N)] * L[i, ((j + 1) % N)]
 
-                    E_a = -0.5 * L[i, j] * sumNN + mu_matrix[i, j] * L[i, j]
+                    deltaSig = -1 * L[i, j] - L[i, j]
 
-                    E_b = -1 * E_a
+                    L[i, j] *= -1
 
-                    if E_b < E_a:
-                        L[i, j] = -1 * L[i, j]
-                    elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
-                        L[i, j] = -1 * L[i, j]
+                    dE = deltaSig * (-1 * sumNN + mu_matrix[i, j])
+
+                    p = math.exp(-1 * dE * beta)
+
+                    if dE < 0 or p >= np.random.rand():
+                        continue
+                    else:
+                        L[i, j] *= -1
+
+                    # E_a = -0.5 * L[i, j] * sumNN + mu_matrix[i, j] * L[i, j]
+                    #
+                    # E_b = -1 * E_a
+                    #
+                    # if E_b < E_a:
+                    #     L[i, j] = -1 * L[i, j]
+                    # elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
+                    #     L[i, j] = -1 * L[i, j]
 
         if step % 2 == 0:
             loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
@@ -186,54 +306,6 @@ class metropolisAlgorithm():
         else:
             loop_over_spins(A, B, M, N, J, spins.mu_matrixA)
             loop_over_spins(B, A, M, N, J, spins.mu_matrixB)
-
-    def MC_step2(self, spins, J_matrix, mu_matrix, beta):
-
-        M = L.shape[0]
-        N = L.shape[1]
-
-        KERNEL = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-
-        # sum over nearest neighbors
-        sumNN = convolve(L, KERNEL, mode='wrap')
-
-        # get change in energy
-        deltaE = (2 * J_matrix * L * sumNN + L * mu_matrix)
-
-        transitionProb = np.exp(-deltaE * beta)
-
-        r1 = np.random.rand(M, N)
-        r2 = np.random.rand(M, N)
-
-        eligibleSpins = (r1 < transitionProb) * (r2 < 0.1) * -2 + 1
-
-        L = L * eligibleSpins
-
-        return L
-
-    def MC_3Dstep2(self, L, J_matrix, mu_matrix, beta):
-        M = L.shape[0]
-        N = L.shape[1]
-
-        KERNEL = np.array(
-            [[[0, 0, 0], [0, 1, 0], [0, 0, 0]], [[0, 1, 0], [1, 0, 1], [0, 1, 0]], [[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
-
-        # sum over nearest neighbors
-        sumNN = convolve(L, KERNEL, mode='wrap')
-
-        # get change in energy
-        deltaE = (2 * J_matrix * L * sumNN + L * mu_matrix)
-
-        transitionProb = np.exp(-deltaE * beta)
-
-        r1 = np.random.rand(M, N, 4)
-        r2 = np.random.rand(M, N, 4)
-
-        eligibleSpins = (r1 < transitionProb) * (r2 < 0.1) * -2 + 1
-
-        L = L * eligibleSpins
-
-        return L
 
     def MC_3Dstep(self, L, J_matrix, mu_matrix, beta):
         """
@@ -252,6 +324,7 @@ class metropolisAlgorithm():
         for i in range(0, M):
             for j in range(0, N):
                 for k in range(1, 3):
+
                     sumNN = J_matrix[((i - 1) + M) % M, j, k] * L[((i - 1) + M) % M, j, k] + \
                             J_matrix[(i + 1) % M, j, k] * L[(i + 1) % M, j, k] + \
                             J_matrix[i, ((j - 1) + N) % N, k] * L[i, ((j - 1) + N) % N, k] + \
@@ -259,14 +332,27 @@ class metropolisAlgorithm():
                             J_matrix[i, j, (k + 1) % N] * L[i, j, (k + 1) % N] + \
                             J_matrix[i, j, (k - 1) % N] * L[i, j, (k - 1) % N]
 
-                    E_a = -0.5 * L[i, j, k] * sumNN + mu_matrix[i, j, k] * L[i, j, k]
+                    deltaSig = -1 * L[i, j, k] - L[i, j, k]
 
-                    E_b = -1 * E_a
+                    L[i, j, k] *= -1
 
-                    if E_b < E_a:
-                        L[i, j, k] = -1 * L[i, j, k]
-                    elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
-                        L[i, j, k] = -1 * L[i, j, k]
+                    dE = deltaSig * (-1 * sumNN + mu_matrix[i, j, k])
+
+                    p = math.exp(-1 * dE * beta)
+
+                    if dE < 0 or p >= np.random.rand():
+                        continue
+                    else:
+                        L[i, j, k] *= -1
+
+                    # E_a = -0.5 * L[i, j, k] * sumNN + mu_matrix[i, j, k] * L[i, j, k]
+                    #
+                    # E_b = -1 * E_a
+                    #
+                    # if E_b < E_a:
+                    #     L[i, j, k] = -1 * L[i, j, k]
+                    # elif np.exp(-1 * (E_b - E_a) * beta) > np.random.rand():
+                    #     L[i, j, k] = -1 * L[i, j, k]
 
         return L
 
@@ -275,9 +361,6 @@ class metropolisAlgorithm():
         beta_array = self.temp
         steps = self.steps
         burn_in = self.burn_in
-
-        M = spins.rows
-        N = spins.cols
 
         time.sleep(0.01)
         nHS_A = []
@@ -290,13 +373,17 @@ class metropolisAlgorithm():
 
             for b in range(burn_in):
                 if spins.couplingType == 'oop':
-                    self.MC_3Dstep2(spins, J_matrix, mu_matrix, beta)
+                    self.MC_step_plane(spins, J_matrix, mu_matrix, beta)
+                if spins.couplingType == 'line':
+                    self.MC_step_line(spins, J_matrix, beta, s)
                 else:
                     self.MC_step(spins, J_matrix, beta, s)
 
             for s in trange(steps):
                 if spins.couplingType == 'oop':
-                    L = self.MC_3Dstep2(L, J_matrix, mu_matrix, beta)
+                    self.MC_step_plane(spins, J_matrix, beta, s)
+                if spins.couplingType == 'line':
+                    self.MC_step_line(spins, J_matrix, beta, s)
                 else:
                     self.MC_step(spins, J_matrix, beta, s)
 
@@ -395,8 +482,8 @@ def torusPlotPoint(spins, figName, save=False):
     ax2.set_zlim(-5, 5)
     ax2.set_xlim(-9, 9)
     ax2.set_ylim(-9, 9)
-    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.2)
-    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.2)
+    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.05)
+    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.05)
     ax2.view_init(36, 90)
     ax2.set_xticks([])
     ax2.set_yticks([])
@@ -436,8 +523,8 @@ def torusPlotLine(spins, figName, save=False):
     ax2.set_zlim(-5, 5)
     ax2.set_xlim(-9, 9)
     ax2.set_ylim(-9, 9)
-    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.2)
-    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.2)
+    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.05)
+    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.05)
     ax2.view_init(36, 90)
     ax2.set_xticks([])
     ax2.set_yticks([])
@@ -479,8 +566,8 @@ def torusPlotSurface(spins, figName, save=False):
     ax2.set_zlim(-5, 5)
     ax2.set_xlim(-9, 9)
     ax2.set_ylim(-9, 9)
-    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.1)
-    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.2)
+    ax2.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=colorMapA, alpha=0.05)
+    ax2.plot_surface(x1, y1, z1, rstride=1, cstride=1, facecolors=colorMapB, alpha=0.05)
     ax2.view_init(36, 90)
     ax2.set_xticks([])
     ax2.set_yticks([])
