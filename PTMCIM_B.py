@@ -37,7 +37,7 @@ def routine(p):
     spinVis(spins.latticeA, 'OG_spins_A' + str(0) + '_pt.png')
     spinVis(spins.latticeB, 'OG_spins_B' + str(0) + '_pt.png')
     torusPlotLine(spins, 'OG_spins_3D' + str(0) + '.png', save=True)
-
+    plt.close('all')
     rawData = []
 
     for i in range(p.numTrials):
@@ -78,3 +78,4 @@ def routine(p):
 
     elapsed = time.time() - t
     print(elapsed)
+    plt.close('all')

@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import time
-from scipy.ndimage import convolve
 import math
 import random
 from tqdm import trange
@@ -417,7 +416,7 @@ def spinVis(spins, imgName):
         left=False,
         labelleft=False) # labels along the bottom edge are off
     plt.savefig(imgName)
-    plt.show()
+    #plt.show()
     plt.clf()
 
 def spinVis3D(spins, imgName):
@@ -446,7 +445,7 @@ def spinVis3D(spins, imgName):
         labelleft=False)  # labels along the bottom edge are off
 
     plt.savefig(imgName)
-    plt.show()
+    #plt.show()
 
     plt.clf()
 
@@ -493,7 +492,7 @@ def torusPlotPoint(spins, figName, save=False):
     if save:
         plt.savefig(figName, transparent=True)
 
-    plt.show()
+    #plt.show()
 
 def torusPlotLine(spins, figName, save=False):
     from matplotlib import cm
@@ -534,7 +533,7 @@ def torusPlotLine(spins, figName, save=False):
     if save:
         plt.savefig(figName, transparent=True)
 
-    plt.show()
+    #plt.show()
 
 def torusPlotSurface(spins, figName, save=False):
     from matplotlib import cm
@@ -577,6 +576,6 @@ def torusPlotSurface(spins, figName, save=False):
     if save:
         plt.savefig(figName, transparent=True)
 
-    plt.show()
+    #plt.show()
 
 

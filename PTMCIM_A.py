@@ -36,6 +36,7 @@ def routine(p):
     spinVis(spins.latticeA, 'OG_spins_A'+str(0)+'_pt.png')
     spinVis(spins.latticeB, 'OG_spins_B'+str(0)+'_pt.png')
     torusPlotPoint(spins, 'OG_spins_3D'+str(0)+'.png', save=True)
+    plt.close('all')
 
 
     rawData = []
@@ -88,3 +89,5 @@ def routine(p):
 
     figName = 'nHS_v_Steps_'+str(i)+'.png'
     plt.savefig(figName)
+
+    plt.close('all')
